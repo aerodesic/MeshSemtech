@@ -1,0 +1,19 @@
+# Loading lora test
+uthread.py
+ulock.py
+uqueue.py
+usemaphore.py
+sx127x.py
+loradomains.py
+loracom.py
+ssd1306.py
+ssd1306_i2c.py
+loracom_main.py main.py
+webserver.py
+configdata.py
+lorawebserver.py
+html/index.html
+html/not_found.html
+html/config.html
+html/reboot.html
+# end of lora comm load

@@ -1,0 +1,24 @@
+{
+  "lora": {
+    "channel": "64",
+    "%direction%options": ["up", "down"],
+    "datarate": "4",
+    "unit": "2",
+    "direction": "up",
+    "network": "0"
+  },
+  "device": {
+    "name": "pinger_test"
+  },
+  "host": {
+    "ap": {
+      "password": "",
+      "essid": ""
+    }
+  },
+  "apmode": {
+    "password": "zippydooda",
+    "essid": "pinger-test-0-2"
+  },
+  "%version": "1"
+}

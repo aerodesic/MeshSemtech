@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{device}</title>
+  </head>
+  <body>
+    <h1>Configuration</h1>
+    <form method='post' id='configuration'>
+      <table border="1">
+        <tr>
+          <th>Name</th>
+          <th>Value</th>
+        </tr>
+	{table}
+      </table>
+    </form>
+    <button type="submit" form="configuration" value="Submit">Submit</button>
+    <button onclick="window.location.href='/'">Exit</button>
+    <button onclick="window.location.href='/reboot'">Reboot</button>
+    {notice}
+  </body>
+</html>

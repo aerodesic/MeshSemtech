@@ -1,1 +1,1 @@
-Micropython driver for Semtech sx127x chip.
+Micropython driver and mesh network encapsulation for Semtech SX127x family of devices. 

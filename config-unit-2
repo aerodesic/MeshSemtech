@@ -1,14 +1,14 @@
 {
-  "lora": {
-    "channel": "64",
-    "%direction%options": ["up", "down"],
-    "datarate": "4",
+  "mesh": {
+    "channel": "0",
+    "%direction%options": ["narrow", "wide"],
+    "datarate": "0",
     "unit": "2",
-    "direction": "up",
+    "chantype": "narrow",
     "network": "0"
   },
   "device": {
-    "name": "pinger_test"
+    "name": "meshnet_test"
   },
   "host": {
     "ap": {
@@ -18,7 +18,7 @@
   },
   "apmode": {
     "password": "zippydooda",
-    "essid": "pinger-test-0-2"
+    "essid": "mesh-test-0-2"
   },
   "%version": "1"
 }

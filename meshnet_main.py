@@ -52,13 +52,13 @@ CONFIG_DATA = ConfigData(read = storage,
                                     'password': ''
                                 },
                             },
-                            'lora': {
+                            'mesh': {
                                 'network': '0',
                                 'unit': '1',
                                 'channel': '64',
                                 'direction': 'up',
-                                '%direction%options': ( 'up', 'down' ),
-                                'datarate': '4',
+                                '%direction%options': ( 'wide', 'narrow' ),
+                                'datarate': '0',
                             },
                          })
 
@@ -69,21 +69,21 @@ from ssd1306_i2c import Display
 display = Display()
 display.show_text_wrap("Starting...")
 
-_NETWORK = int(CONFIG_DATA.get("lora.network", "0"))
-_UNIT = int(CONFIG_DATA.get("lora.unit", "1"))
+_NETWORK = int(CONFIG_DATA.get("mesh.network", "0"))
+_UNIT = int(CONFIG_DATA.get("mesh.unit", "1"))
 
-from loradomains import US902_928 as domain
-from loracom import LoRaHandler
-lora=LoRaHandler(
+from meshdomains import US902_MESHNET as domain
+from meshnet import MeshNet
+meshnet=MeshNet(
         domain,
         enable_crc=False,
-        channel=(int(CONFIG_DATA.get("lora.channel", default='64')), CONFIG_DATA.get("lora.direction", default='up'), int(CONFIG_DATA.get("lora.datarate", default='4'))),
+        channel=(int(CONFIG_DATA.get("mesh.channel", default='64')), CONFIG_DATA.get("mesh.direction", default='up'), int(CONFIG_DATA.get("mesh.datarate", default='4'))),
 )
-lora.init()
+meshnet.init()
 
 # Start web server
-from lorawebserver import *
-webserver = LoRaWebserver(
+from meshnetwebserver import *
+webserver = MeshNetWebServer(
         config=CONFIG_DATA,
         display=lambda text, line=4, clear=False : display.show_text_wrap(text, start_line=line, clear_first=clear),
 )
@@ -110,11 +110,11 @@ def escape_data(data, sum=0):
     # return out.decode(), sum
     return bytes(out), sum
 
-def handle_lora_receive(t):
+def handle_mesh_receive(t):
     global _NETWORK, _UNIT
 
     while t.running:
-        packet = lora.receive_packet()
+        packet = meshnet.receive_packet()
         if 'data' in packet:
             led.on()
             data = packet['data']
@@ -166,7 +166,7 @@ def unescape_data(buffer):
     # print("escape_process out: %s, sum %d" % (out, sum))
     return bytes(out), sum
 
-def handle_lora_send(t):
+def handle_meshnet_send(t):
     state = 'start'
 
     while t.running:
@@ -228,7 +228,7 @@ def send_packet_to(address, buffer):
     # Encrypt buffer here
     ######################
 
-    lora.send_packet(address + buffer)
+    meshnet.send_packet(address + buffer)
     # print("sent %s" % bytes(address + buffer))
 
     gc.collect()
@@ -254,11 +254,11 @@ def send_button_packet(event):
 button = machine.Pin(0)
 button.irq(handler=send_button_packet, trigger=machine.Pin.IRQ_FALLING)
 
-# Start thread to handle input from LORA
-input_thread = thread(run=handle_lora_receive, stack=8192)
+# Start thread to handle input from Mesh network
+input_thread = thread(run=handle_meshnet_receive, stack=8192)
 input_thread.start()
 
-output_thread = thread(run=handle_lora_send, stack=8192)
+output_thread = thread(run=handle_meshnet_send, stack=8192)
 output_thread.start()
 
 display.show_text_wrap(CONFIG_DATA.get("apmode.essid"), clear_first=False)
@@ -269,5 +269,5 @@ while True:
     sleep(30)
     gc.collect()
     display.show_text_wrap("Mem: %d" % gc.mem_free(), start_line=6, clear_first=False)
-    display.show_text_wrap("Tx %d Rx %d" % (lora._tx_interrupts, lora._rx_interrupts), start_line=7, clear_first=False)
+    display.show_text_wrap("Tx %d Rx %d" % (meshnet._tx_interrupts, meshnet._rx_interrupts), start_line=7, clear_first=False)
 

@@ -1,20 +1,20 @@
-# Loading lora test
+# Loading meshnet test
 uthread.py
 ulock.py
 uqueue.py
 usemaphore.py
 sx127x.py
-loradomains.py
-loracom.py
+meshnetdomains.py
+meshnetcom.py
 ssd1306.py
 ssd1306_i2c.py
-loracom_main.py main.py
+meshnetcom_main.py main.py
 webserver.py
 configdata.py
-lorawebserver.py
+meshnetwebserver.py
 html/index.html
 html/not_found.html
 html/config.html
 html/reboot.html
 config-unit-1 .config
-# end of lora comm load
+# end of meshnet load

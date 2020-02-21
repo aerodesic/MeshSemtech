@@ -1,5 +1,5 @@
 #
-# LoRa Com driver
+# MeshNet driver
 #
 
 from time import sleep
@@ -19,12 +19,12 @@ _SX127x_SS    = const(18)
 _SX127x_RESET = const(14)
 _SX127x_WANTED_VERSION = const(0x12)
 
-class LoRaHandler(SX127x_driver):
+class MeshNet(SX127x_driver):
 
     def __init__(self, domain, **kwargs):
         SX127x_driver.__init__(self, domain, **kwargs)
 
-        self._loralock = rlock()
+        self._meshlock = rlock()
         self._transmit_queue = queue()
         self._receive_queue = queue()
 
@@ -111,14 +111,14 @@ class LoRaHandler(SX127x_driver):
 
     # Put packet into transmit queue.  If queue was empty, start transmitting
     def send_packet(self, packet):
-        with self._loralock:
+        with self._meshlock:
             # print("Appending to queue: %s" % packet.decode())
             self._transmit_queue.put(packet)
             if len(self._transmit_queue) == 1:
                 self.transmit_packet(packet)
 
     def close(self):
-        print("LoRa handler close called")
+        print("MeshNet handler close called")
         # Close DIO interrupts
         for dio in self._dio_table:
             dio.irq(handler=None, trigger=0)

@@ -12,7 +12,7 @@ except:
     # In case this is needed
     const = lambda x: x
 
-class LoraDeviceException(Exception):
+class SX127xDeviceException(Exception):
     pass
 
 # Register definitions
@@ -79,11 +79,11 @@ _SX127x_REG_FEI_LSB              = const(0x2A)     # Estimated frequency error L
 # 0x2B reserved
 _SX127x_REG_RSSI_WIDEBAND        = const(0x2c)     # Wideband RSSI measurement
 # 0x2D to 02x30 reserved
-_SX127x_REG_DETECTION_OPTIMIZE   = const(0x31)     # LoRa detection optimize for SF6
+_SX127x_REG_DETECTION_OPTIMIZE   = const(0x31)     # Detection optimize for SF6
 # 0x32 reserved
 _SX127x_REG_INVERT_IQ            = const(0x33)     # Invert I and Q signals
 # 0x34 through 0x36 reserved
-_SX127x_REG_DETECTION_THRESHOLD  = const(0x37)     # LoRa detection threshold for SF6
+_SX127x_REG_DETECTION_THRESHOLD  = const(0x37)     # Detection threshold for SF6
 # 0x38 reserved
 _SX127x_REG_SYNC_WORD            = const(0x39)     # Sync word
 # 0x3A through 0x3F reserved
@@ -202,7 +202,7 @@ class SX127x_driver:
             self._data_rates = self._domain['data_rates']
 
         else:
-            raise LoraDeviceException("'data_rates' not found in domain")
+            raise SX127xDeviceException("'data_rates' not found in domain")
 
         self._sync_word        = kwargs['sync_word']        if 'sync_word'        in kwargs else 0x34
         self._preamble_length  = kwargs['preamble_length']  if 'preamble_length'  in kwargs else 8

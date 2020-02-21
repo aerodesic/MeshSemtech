@@ -5,8 +5,8 @@ import socket
 from time import sleep
 import sys
 
-class LoRaWebserver(thread):
-    def __init__(self, config, name="LoraWebServer", apmode=True, display=None):
+class MeshNetWebserver(thread):
+    def __init__(self, config, name="MeshNetWebServer", apmode=True, display=None):
         super().__init__(name, stack=8192)
         self._config = config
         self._apmode = apmode

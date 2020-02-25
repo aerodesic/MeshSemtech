@@ -13,8 +13,6 @@ import network
 MAC_ADDRESS = "".join("%02x" % d for d in network.WLAN().config('mac'))
 del(network)
 
-_BROADCAST_UNIT = const(0x3F)
-
 # Simulate nvram storge using flash
 # nvram is getting smacked WAY too often
 def storage(data=None):
@@ -53,8 +51,7 @@ CONFIG_DATA = ConfigData(read = storage,
                                 },
                             },
                             'mesh': {
-                                'network': '0',
-                                'unit': '1',
+                                'address': '1',
                                 'channel': '64',
                                 'direction': 'up',
                                 '%direction%options': ( 'wide', 'narrow' ),
@@ -69,14 +66,14 @@ from ssd1306_i2c import Display
 display = Display()
 display.show_text_wrap("Starting...")
 
-_NETWORK = int(CONFIG_DATA.get("mesh.network", "0"))
-_UNIT = int(CONFIG_DATA.get("mesh.unit", "1"))
+_ADDRESS = int(CONFIG_DATA.get("mesh.address", "1"))
 
 from meshdomains import US902_MESHNET as domain
 from meshnet import MeshNet
 meshnet=MeshNet(
         domain,
-        enable_crc=False,
+        enable_crc=True,
+        address=_ADDRESS,
         channel=(int(CONFIG_DATA.get("mesh.channel", default='64')), CONFIG_DATA.get("mesh.direction", default='up'), int(CONFIG_DATA.get("mesh.datarate", default='4'))),
 )
 meshnet.init()
@@ -111,37 +108,32 @@ def escape_data(data, sum=0):
     return bytes(out), sum
 
 def handle_mesh_receive(t):
-    global _NETWORK, _UNIT
+    global _ADDRESS
 
     while t.running:
         packet = meshnet.receive_packet()
-        if 'data' in packet:
-            led.on()
-            data = packet['data']
-            print("Rcv: %s" % data)
-            # The address is the first two bytes of the message
-            address = data[0] * 256 + data[1]
-            net = address >> 6
-            unit = address % 64
-            # If to our network and either broadcast or our unit, process it.
-            if (net == _NETWORK and (unit == _BROADCAST_UNIT or unit == _UNIT)):
-                ##########################
-                # Decrypt packet here...
-                ##########################
-                fromaddr = data[3] * 256 + data[4]
-                display.show_text_wrap("from %x %d" % (fromaddr, packet['rssi']), start_line=1, clear_first=False)
-                display.show_text_wrap(data[5:].decode(), start_line=2, clear_first=False)
-                # Send packet to output stream
-                output, sum = escape_data(data)
-                sys.stdout.write("$")
-                sys.stdout.write(output)
-                sys.stdout.write(":%d:%d\r\n" % (sum % 0x10000, packet['rssi']))
+        led.on()
+        print("Rcv: %s" % packet)
+        # The address is the first two bytes of the message
+        packet.decrypt()
+        fromaddr = packet.source()
+        display.show_text_wrap("from %x %d" % (fromaddr, packet.rssi), start_line=1, clear_first=False)
+        display.show_text_wrap(packet.body().decode(), start_line=2, clear_first=False)
+        # Send packet to output stream
+        output, sum = escape_data(data)
+        sys.stdout.write("$")
+        sys.stdout.write(output)
+        sys.stdout.write(":%d:%d\r\n" % (sum % 0x10000, packet['rssi']))
 
-                # if a PING packet, reply with 'reply' packet
-                if data[5:10] == b'ping ':
-                    # Send reponse to the originating address
-                    send_packet_to(fromaddr, "reply %s (%d)" % (data[10:].decode(), packet['rssi']))
-            led.off()
+        # if a PING packet, reply with 'reply' packet
+        if packet.body()[0:5] == b'ping ':
+            # Send reponse to the originating address
+            newpacket = PacketData("reply %s (%d)" % (packet.body()[5:].decode(), packet.rssi))
+            newpacket.source(_ADDRESS)
+            newpacket.dest(packet.source())
+            mesh_net.send_packet(new_packet)
+
+        led.off()
 
     return 0
 
@@ -195,8 +187,9 @@ def handle_meshnet_send(t):
                     if found == cksum:
                         # The destination address is taken from the first two bytes
                         # The source address along with the random byte will be generated...
-                        address = (buffer[0] << 8) + buffer[1]
-                        send_packet_to(address, buffer[2:])
+                        packet = meshnet.create_packet(buffer[2:], )
+                        packet.dest((buffer[0] << 8) + buffer[1])
+                        mesh_net.send_packet(address)
                     else:
                         print("-ERROR: wanted %04x found %04x" % (found, cksum))
 
@@ -210,14 +203,13 @@ def handle_meshnet_send(t):
 
 
 def send_packet_to(address, buffer):
-    global _NETWORK, _UNIT
+    global _ADDRESS
 
     # print("send_packet_to: %04x: %s" % (address, buffer))
 
     address = bytearray(((address >> 8) % 256, address % 256))
 
-    fromaddr = (_NETWORK << 6) + _UNIT
-    header = bytearray((randrange(0, 256), (fromaddr >> 8) % 256, fromaddr % 256))
+    header = bytearray((randrange(0, 256), (_ADDRESS >> 8) % 256, _ADDRESS % 256))
 
     if type(buffer) == str:
         buffer = bytearray(buffer)
@@ -246,8 +238,7 @@ def send_button_packet(event):
     if ticks_diff(now, last_time) > 500:
         ping_counter += 1
         # Send to broadcast unit on our network
-        address = (_NETWORK << 6) + _BROADCAST_UNIT
-        send_packet_to(address, "ping %d" % ping_counter)
+        send_packet_to(_ADDRESS, "ping %d" % ping_counter)
         last_time = now
 
 # Set up interrupt on a pin to send a broadcast packet

@@ -23,23 +23,23 @@ class thread():
         return "%s:%s" % (self._name, self._ident)
 
     # Start the thread execution
-    def start(self):
+    def start(self, *args, **kwargs):
         if self._runninglock.acquire(0):
             self.running = True
             if self._stack != None:
                 _thread.stack_size(self._stack)
-            _thread.start_new_thread(self._run, ())
+            _thread.start_new_thread(self._run, args, kwargs)
 
     # Calls user 'run' method and saves return code
-    def _run(self):
+    def _run(self, *args, **kwargs):
         # Capture our ident
         self._ident = _thread.get_ident()
 
         # Run the user's code
         if self._userrun:
-            self._rc = self._userrun(self)
+            self._rc = self._userrun(self, *args, **kwargs)
         else:
-            self._rc = self.run()
+            self._rc = self.run(*args, **kwargs)
         self._ident = None
 
         # Allow 'wait' to finish

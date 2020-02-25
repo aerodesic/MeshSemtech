@@ -1,0 +1,38 @@
+Assume 6 nodes:
+
+1	2	4	6
+	3	5
+
+Node 1 wants a route to 6
+
+creates a route[6] = { Seq=N, M=None, To=None }
+
+1 sends    S1 D6 F1 Tb PathRequest [ SeqN M1 ]
+
+2 receives S1 D6 F1 Tb PathRequest [ SeqN M1 ] No route to 1 so creates route[1] = { Seq=N, M=1, To=1 } forwards S1 D6 F2 Tb PathRequest [ SeqN M2 ]
+3 receives S1 D6 F1 Tb PathRequest [ SeqN M1 ] No route to 1 so creates route[1] = { Seq=N, M=1, To=1 } forwards S1 D6 F3 Tb PathRequest [ SeqN M2 ]
+
+1 receives S1 D6 F2 Tb PathRequest [ SeqN M2 ] Is node 1, so ignored
+3 receives S1 D6 F2 Tb PathRequest [ SeqN M2 ] Has route to 1 with sequence number, ignores
+4 receives S1 D6 F2 Tb PathRequest [ SeqN M2 ] No route to 1 so creates route[1] = { Seq=N, M=2, To=2 } forwards S1 D6 F4 Tb PathRequest [ SeqN M3 ]
+
+1 receives S1 D6 F3 Tb PathRequest [ SeqN M2 ] Is node 1, so ignored
+2 receives S1 D6 F3 Tb PathRequest [ SeqN M2 ] Has route to 1 with sequence number, ignores
+4 receives S1 D6 F3 Tb PathRequest [ SeqN M2 ] has route with sequence and no better metric so ignores
+
+2 receives S1 D6 F4 Tb PathRequest [ SeqN M3 ] has route with sequence and no better metric so ignores
+3 receives S1 D6 F4 Tb PathRequest [ SeqN M3 ] has route with sequence and no better metric so ignores
+5 receives S1 D6 F4 Tb PathRequest [ SeqN M3 ] no route to 1 so creates route[1] = { Seq=N, M=3, To=4 } forwards S1 D6 F5 Tb PathRequest [ SeqN M4 ]
+6 receives S1 D6 F4 Tb PathRequest [ SeqN M3 ] no route to 1 so creates route[1] = { Seq=N, M=3, To=4 } sends    S6 D1 F6 T4 PathReply   [ SeqN M3 ]
+
+2 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence number so ignores
+3 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence number so ignores
+4 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence number so ignores
+6 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence but metric isn't better so ignores
+
+4 receives S6 D1 F6 T4 PathReply   [ SeqN M3 ] has route to 1 sends S6D1F4T2 PathReply [ SeqN M3 ]
+2 receives S6 D1 F4 T2 PathReply   [ SeqN M3 ] has route to 1 sends S6D1F2T1 PathReply [ SeqN M3 ]
+1 receives S6 D1 F2 T1 PathReply   [ SeqN M3 ] finalized route[6] = { Seq=N, M=3, To=2 }
+
+Route established - sends any data waiting for node 6
+

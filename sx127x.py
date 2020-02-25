@@ -168,6 +168,8 @@ class SX127x_driver:
         self._xtal    = kwargs['xtal']    if 'xtal'    in kwargs else 32e6
         self._channel = kwargs['channel'] if 'channel' in kwargs else None
 
+        self._packets_memory_errors = 0
+
         self._pll_step = self._xtal / 2**19
         print("PLL step %f" % self._pll_step)
 
@@ -495,11 +497,15 @@ class SX127x_driver:
                     length = self.read_register(_SX127x_REG_PAYLOAD_LENGTH)
                 else:
                     length = self.read_register(_SX127x_REG_RX_NUM_BYTES)
+
                 packet = self.read_buffer(_SX127x_REG_FIFO, length)
 
-                crc_ok = (flags & _SX127x_IRQ_PAYLOAD_CRC_ERROR) == 0
+                if packet:
+                    crc_ok = (flags & _SX127x_IRQ_PAYLOAD_CRC_ERROR) == 0
+                    self.onReceive(packet, crc_ok, self.get_packet_rssi())
+                else:
+                    self._packets_memory_failed += 1
 
-                self.onReceive(packet, crc_ok, self.get_packet_rssi())
         else:
             print("_rxhandle_interrupt: not for us %02x" % flags)
   

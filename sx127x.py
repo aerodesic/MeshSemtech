@@ -5,7 +5,7 @@
 #
 import gc
 from ulock import *
-
+from uthread import timer
 try:
     _UNUSED_=const(1)
 except:
@@ -14,6 +14,8 @@ except:
 
 class SX127xDeviceException(Exception):
     pass
+
+_DEFAULT_PACKET_DELAY = 0.05
 
 # Register definitions
 _SX127x_REG_FIFO                 = const(0x00)     # Read/write fifo
@@ -156,6 +158,15 @@ _BANDWIDTH_BINS = (
 # Parameters
 #     domain                - domain frequency and data rate table
 #     channel               - specified if to lock to a specific channel
+#     delay                 - delay before transmitting next packet in queue
+#                             First one always done immediately. Intermediate
+#                             packets delay this number of (fractional) seconds
+#                             before sending the next packet.
+#                             TODO: consider keeping a timestamp when packet is
+#                             last sent and delay <delay> seconds before starting
+#                             a new packet if restarting.  This would force a
+#                             *minimum* delay between packets, regardless of
+#                             if they are sent one-at-a-time or in-bulk.
 #
 class SX127x_driver:
 
@@ -167,6 +178,7 @@ class SX127x_driver:
         self._domain  = domain
         self._xtal    = kwargs['xtal']    if 'xtal'    in kwargs else 32e6
         self._channel = kwargs['channel'] if 'channel' in kwargs else None
+        self._delay   = kwargs['delay']   if 'delay'   in kwargs else _DEFAULT_PACKET_DELAY
 
         self._packets_memory_errors = 0
 
@@ -527,10 +539,16 @@ class SX127x_driver:
 
             # Transmit interrupt
             with self._lock:
+                # Discard current queue entry and get next packet to send
                 packet = self.onTransmit()
                 if packet:
-                    self.transmit_packet(packet)
+                    # If a packet exists, send it.
+                    if self._delay != 0:
+                        timer(self._delay, self.transmit_packet, (packet,)).start()
+                    else:
+                        self.transmit_packet(packet)
                 else:
+                    # Other return to receive mode.
                     self.set_receive_mode()
         else:
             print("_txhandle_interrupt: not for us %02x" % flags)

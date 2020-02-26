@@ -1,6 +1,7 @@
 # Simple thread class
 import _thread
 from ulock import lock
+from gc import collect
 
 class thread():
     def __init__(self, name="sx127x", stack=None, run=None):
@@ -52,4 +53,19 @@ class thread():
     # Wait for thread to terminate if wait is 1 otherwise just test if terminated and return exit code
     def wait(self, wait=1):
         return self._rc if self._runninglock.acquire(wait) else None
+
+from time import sleep
+class timer(thread):
+    def __init__(self, timer, func, *args, **kwargs):
+        self._timer = timer
+        self._args = args
+        self._kwargs = kwargs
+        self._func = func
+        super().__init__()
+
+    def run(self):
+        sleep(self._timer)
+        self._func(*self._args, **self._kwargs)
+        del(self)
+        collect()
 

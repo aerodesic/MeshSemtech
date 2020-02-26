@@ -30,9 +30,10 @@ creates a route[6] = { Seq=N, M=None, To=None }
 4 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence number so ignores
 6 receives S1 D6 F5 Tb PathRequest [ SeqN M4 ] has route to 1 with sequence but metric isn't better so ignores
 
-4 receives S6 D1 F6 T4 PathReply   [ SeqN M3 ] has route to 1 sends S6D1F4T2 PathReply [ SeqN M3 ]
+4 receives S6 D1 F6 T4 PathReply   [ SeqN M3 ] has route to 1 sends S6D1F4T1 PathReply [ SeqN M3 ]
 2 receives S6 D1 F4 T2 PathReply   [ SeqN M3 ] has route to 1 sends S6D1F2T1 PathReply [ SeqN M3 ]
 1 receives S6 D1 F2 T1 PathReply   [ SeqN M3 ] finalized route[6] = { Seq=N, M=3, To=2 }
+1 receives S6 D1 F4 T1 PathReply   [ SeqN M3 ] has route to 6 with no better metric, ignores
 
 Route established - sends any data waiting for node 6
 

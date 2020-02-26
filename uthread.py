@@ -54,6 +54,16 @@ class thread():
     def wait(self, wait=1):
         return self._rc if self._runninglock.acquire(wait) else None
 
+#
+# A timer object, similar to threading.Timer()
+#
+# Create a timer:
+#    t=timer(<delay>, func_to_call, optional arg and kwarg parameters passed to func_to_call)
+#    t.start()  # Delays then calls func_to_call.
+#
+# It appears the functionality of thread allows recurring calls to start, allowing restarting of timer.
+# BEWARE starting a currently-running timer.  Perhaps I need a flag for this :-)
+#
 from time import sleep
 class timer(thread):
     def __init__(self, timer, func, *args, **kwargs):

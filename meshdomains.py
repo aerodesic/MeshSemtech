@@ -13,8 +13,8 @@ US902_MESHNET = {
     # 'dr': (<low inclusive datarate>, <high inclusive datarate>),
     # 'freq': (<starting freq>, <step>),
     'channels': (
-        { 'type': 'narrow', 'chan': (0, 64), 'dr': (8, 13), 'freq': (90230000, 200000)  }
-        { 'type': 'wide',   'chan': (0, 15), 'dr': (0, 3),  'freq': (90300000, 1600000) }
+        { 'type': 'narrow', 'chan': (0, 64), 'dr': (8, 13), 'freq': (90230000, 200000)  },
+        { 'type': 'wide',   'chan': (0, 15), 'dr': (0, 3),  'freq': (90300000, 1600000) },
     ),
 
     # <rate>: {

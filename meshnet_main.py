@@ -70,13 +70,16 @@ _ADDRESS = int(CONFIG_DATA.get("mesh.address", "1"))
 
 from meshdomains import US902_MESHNET as domain
 from meshnet import MeshNet
+
 meshnet=MeshNet(
         domain,
         enable_crc=True,
         address=_ADDRESS,
         channel=(int(CONFIG_DATA.get("mesh.channel", default='64')), CONFIG_DATA.get("mesh.direction", default='up'), int(CONFIG_DATA.get("mesh.datarate", default='4'))),
 )
-meshnet.init()
+meshnet.set_promiscuous(True)
+# meshnet.set_debug(True)
+meshnet.start()
 
 # Start web server
 from meshnetwebserver import *
@@ -90,13 +93,12 @@ led = machine.Pin(25, machine.Pin.OUT)
 
 import sys
 
-# Input is a byte array of data.  Output is bytes with escape chars and returned checksum of array
-def escape_data(data, sum=0):
+# Input is a byte array of data.  Output is bytes with escape chars
+def escape_buffer(data):
     out = bytearray()
     for i in range(len(data)):
         ch = data[i]
-        sum += ch
-        if ch < 32 or ch > 127 or ch in [ ord('$'), ord('%'), ord(':') ]:
+        if ch < 32 or ch >= 127 or ch in [ ord('$'), ord('%'), ord(':'), ord(';') ]:
             out.append(ord('%'))
             hexval = "%02x" % ch
             out.append(ord(hexval[0]))
@@ -104,49 +106,15 @@ def escape_data(data, sum=0):
         else:
             out.append(ch)
             
-    # return out.decode(), sum
-    return bytes(out), sum
-
-def handle_mesh_receive(t):
-    global _ADDRESS
-
-    while t.running:
-        packet = meshnet.receive_packet()
-        led.on()
-        print("Rcv: %s" % packet)
-        # The address is the first two bytes of the message
-        packet.decrypt()
-        fromaddr = packet.source()
-        display.show_text_wrap("from %x %d" % (fromaddr, packet.rssi), start_line=1, clear_first=False)
-        display.show_text_wrap(packet.body().decode(), start_line=2, clear_first=False)
-        # Send packet to output stream
-        output, sum = escape_data(data)
-        sys.stdout.write("$")
-        sys.stdout.write(output)
-        sys.stdout.write(":%d:%d\r\n" % (sum % 0x10000, packet['rssi']))
-
-        # if a PING packet, reply with 'reply' packet
-        if packet.body()[0:5] == b'ping ':
-            # Send reponse to the originating address
-            newpacket = PacketData("reply %s (%d)" % (packet.body()[5:].decode(), packet.rssi))
-            newpacket.source(_ADDRESS)
-            newpacket.dest(packet.source())
-            mesh_net.send_packet(new_packet)
-
-        led.off()
-
-    return 0
-
+    return bytes(out)
 
 # Remove #xx escapes from message and return message cksum
 def unescape_data(buffer):
     # print("escape_process in: %s" % buffer)
     out = bytearray()
-    sum = 0
     index = 0
     while index < len(buffer):
         ch = buffer[index]
-        sum += ch
         if ch == ord('%'):
             # Accept two hex values as a character
             out.append(int("0x%c%c" % (buffer[index + 1], buffer[index+2])) % 256)
@@ -155,9 +123,50 @@ def unescape_data(buffer):
             out.append(ch)
         index += 1
 
-    # print("escape_process out: %s, sum %d" % (out, sum))
-    return bytes(out), sum
+    return bytes(out)
 
+def handle_mesh_receive(t):
+    global _ADDRESS
+
+    while t.running:
+        # Wait for a packet from the network
+        packet = meshnet.receive_packet()
+        led.on()
+
+        # Display the packet contents
+        if packet.promiscuous():
+            print("RCVD: %s" % (str(packet)))
+
+        elif type(packet) == DataPacket:
+            # Process the packet if we can
+            fromaddr = packet.source()
+            display.show_text_wrap("from %d %d" % (fromaddr, packet.rssi), start_line=1, clear_first=False)
+            display.show_text_wrap("protocol %d" % packet.protocol(), start_line=2, clear_first=False)
+
+            output = "%d;%d;%s;%d" % (packet.source(), packet.protocol(), escape_buffer(packet.payload()), packet.rssi())
+            cksum = checksum_buffer(output)
+        
+            # Send packet as text: <source address>;<protocol id>;<rssi>;<payload>:<checksum of chars before ';'>
+            sys.stdout.write("$%s:%d\r\n" % (output, cksum % 0x10000))
+
+            # if a PING packet, reply with 'reply' packet
+            if packet.payload(start=0, end=5) == b'ping ':
+                # Send reponse to the originating address
+                newpacket = DataPacket(payload="reply %s (%d)" % (packet.payload(start=5), packet.rssi()), dest=packet.source())
+                mesh_net.send_packet(newpacket)
+
+        led.off()
+
+    return 0
+
+
+def checksum_buffer(buffer):
+    sum = 0
+    for ch in buffer:
+        sum += ch
+    return sum
+
+# $<address>;<protocol>;<payload>:<checksum>
 def handle_meshnet_send(t):
     state = 'start'
 
@@ -181,15 +190,17 @@ def handle_meshnet_send(t):
         elif state == 'cksum':
             if ch == '\n':
                 try:
-                    value, dummy = unescape_data(value)
                     cksum = int(value, 16)
-                    buffer, found = unescape_data(buffer)
+                    found = checksum_buffer(buffer)
                     if found == cksum:
-                        # The destination address is taken from the first two bytes
-                        # The source address along with the random byte will be generated...
-                        packet = meshnet.create_packet(buffer[2:], )
-                        packet.dest((buffer[0] << 8) + buffer[1])
-                        mesh_net.send_packet(address)
+                        # Split buffer into address, protocol and payload
+                        address, protocol, payload = split(buffer, ';')
+                        # Remove escape chars from payload
+                        payload = unescape_data(payload)
+
+                        # Create a packet to the destination address with the declared payload and protocol
+                        packet = DataPacket(protocol=int(protocol), dest=int(address), payload=payload)
+                        mesh_net.send_packet(packet)
                     else:
                         print("-ERROR: wanted %04x found %04x" % (found, cksum))
 

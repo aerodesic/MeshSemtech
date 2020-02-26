@@ -14,22 +14,22 @@
 #   DataPacket   - A data packet that will be routed from node A to B via intermediate nodes.
 #
 # All packets contain a header with the following information:
-#   from              - address of node sending the packet
+#   previous          - address of node sending the packet
 #   source            - address of node that created the initial packet
 #   to                - address of node that should receive the packet
-#   dest              - address of destination node for the packet
+#   next              - address of destination node for the packet
 #   ttl               - time to live.  A counter that decrements upon every retransmission
 #   protocol          - identifies protocol of payload (Data, PathRequest, etc.)
 #
 # When a node creates a new packet, the node will be labeled:
-#   from              - address of node sending the packet
+#   previous          - address of node sending the packet
 #   source            - address of node sending the packet
 #   to                - address of destination (or BROADCAST)
 #   dest              - address of target recipient
 #   ttl               - default max value
 #
 # When a node rebroadcasts a packet:
-#   from              - address of node sending packet
+#   previous          - address of node sending packet
 #   source            - original source
 #   to                - address of next node in hop or broadcast
 #   dest              - original destination
@@ -37,7 +37,7 @@
 #    
 # When a node desires to send a packet to a node for which it does not have a route,
 # it creates a PathRequest with the following information
-#   from              - address of node sending packet
+#   previous          - address of node sending packet
 #   source            - address of node sending packet
 #   to                - broadcast
 #   dest              - address of unknown destination node
@@ -50,23 +50,23 @@
 #     Create a route to <source> with the following information
 #        route[header.source] =
 #           sequence = payload.sequence
-#           to       = header.from
+#           to       = header.previous
 #           metric   = payload.metric
 #
 #   else if the payload.metric is less than than route.metric or payload.sequence != route.sequence:
 #       route.sequence = payload.sequence
 #       route.metric   = payload.metric
-#       route.to       = header.from
+#       route.next     = header.previous
 #
 #   if the node address is same as header.destination, generate PathReply with:
-#       header.from         - our node address
+#       header.previous     - our node address
 #       header.source       - our node address
-#       header.to           - route.to
+#       header.next         - route.next
 #       header.destination  - header.source
 #       payload.sequence    - generated new sequence number
 #       payload.metric      - route.metric
 #   else if header.ttl != 0:
-#       header.from      - current address
+#       header.previous  - current address
 #       payload.sequence - from pathrequest payload
 #       payload.metric   - from payload metric + 1
 #       header.ttl       - header.ttl - 1
@@ -75,7 +75,7 @@
 #   if we receive PathReply matching route[header.source].sequence == payload.sequence and a improved metric:
 #       route[header.source] =
 #           metric = payload.metric
-#           to     = header.from
+#           to     = header.previous
 #
 
 from time import sleep
@@ -124,8 +124,8 @@ def create_field(len, origin=0):
         return (origin, len)
     elif type(origin) == tuple:
         return (origin[0] + origin[1], len)
-    else:`
-        raise MeshNetException("Invalid type for 'origin'"
+    else:
+        raise MeshNetException("Invalid type for 'origin'")
 
 def end_field(field):
     return field[0] + field[1]
@@ -136,7 +136,7 @@ def end_field(field):
 #########################################################################
 # A group of data with field referencing
 class FieldRef(object):
-    def __init__(self, **kwargs);
+    def __init__(self, **kwargs):
         self._data = kwargs['data'] if 'data' in kwargs else None
 
         # Create empty field if undefined and there is a 'len' member
@@ -150,7 +150,7 @@ class FieldRef(object):
         return len(self._data)
 
     def __str__(self):
-        return "FieldRef(%d)" % len(self))
+        return "FieldRef(%d)" % len(self)
 
     # Set or get a field of bytes, bigendian
     # <field> is ( <origin>, <length> )
@@ -184,7 +184,7 @@ class FieldRef(object):
         return value
 
     # Used to set/clear/test bits in a field
-    def _field_bit(self, field, bitnum=None, value=None)
+    def _field_bit(self, field, bitnum=None, value=None):
         current = self._field(field)
 
         if value == None:
@@ -206,12 +206,16 @@ class FieldRef(object):
         self._data.extend(bytearray(len))
 
 
-# A Packet is the basic wrapper for a set of data to be sent or received from the wireless device.
+#
+# A Packet is the basic wrapper for any data to be sent or received from the wireless device.
 # This class only identifies the basic units of the data:
 #  
 # source()   Source address of the packet
 # dest()     Destination address of the packet
+# previous() Last node address sending packet
+# next()     Next intended receiver (or BROADCAST)
 # protocol() Protocol id of packet (Route Request, Route Announce, Data, etc.)
+# ttl()      Time to live.  Decreased by one on each retransmission.  Dropped when TTL goes to 0.
 #
 # A Packet is constructed by
 #         Packet(data=<data>) for incoming packets
@@ -221,19 +225,19 @@ class FieldRef(object):
 # All packets have a header containing:
 #  to          - intended recipient or BROADCAST (may also be an address on the way to the destination - routing)
 #  destination - final recipient of packet
-#  from        - sender of the packet
+#  previous    - sender of the packet
 #  source      - originator of packet
 #  protocol    - protocol id of this packet
 #  ttl         - total hops before it expires
 #  
-_HEADER_TO                  = create_field(_ADDRESS_LEN)
-_HEADER_DESTINATION         = create_field(_ADDRESS_LEN, _HEADER_TO)
-_HEADER_FROM                = create_field(_ADDRESS_LEN, _HEADER_DESTINATION)
-_HEADER_SOURCE              = create_field(_ADDRESS_LEN, _HEADER_FROM)
+_HEADER_NEXT                = create_field(_ADDRESS_LEN)
+_HEADER_DESTINATION         = create_field(_ADDRESS_LEN, _HEADER_NEXT)
+_HEADER_PREVIOUS            = create_field(_ADDRESS_LEN, _HEADER_DESTINATION)
+_HEADER_SOURCE              = create_field(_ADDRESS_LEN, _HEADER_PREVIOUS)
 _HEADER_PROTOCOL            = create_field(_PROTOCOL_LEN, _HEADER_SOURCE)
 _HEADER_TTL                 = create_field(_TTL_LEN, _HEADER_PROTOCOL)
 _HEADER_LENGTH              = end_field(_HEADER_TTL)
-_HEADER_PAYLOAD             = const(_HEADER_LENGTH)
+_HEADER_PAYLOAD             = _HEADER_LENGTH
 
 def Packet(FieldRef):
 
@@ -241,29 +245,36 @@ def Packet(FieldRef):
         super().__init__(**kwargs)
 
         # Set fields if present
-        self.from       (kwargs['from']     if 'from'     in kwargs else None)           # From is filled in by send_packet if not defined at creation
+        self.previous   (kwargs['previous'] if 'previous' in kwargs else None)           # From is filled in by send_packet if not defined at creation
         self.source     (kwargs['source']   if 'source'   in kwargs else self.address)   # Source is usually from this host
         self.destination(kwargs['dest']     if 'dest'     in kwargs else None)           # Destination is usually a specific node or broadcast.  Usually the final destination
-        self.to         (kwargs['to']       if 'to'       in kwargs else None)           # To is usually a specific node or broadcast for things like beacons; if None, filled in by route
+        self.next       (kwargs['next']     if 'next'     in kwargs else None)           # To is usually a specific node or broadcast for things like beacons; if None, filled in by route
         self.ttl        (kwargs['ttl']      if 'ttl'      in kwargs else _TTL_DEFAULT)   # TTL is default for most packets; set to 1 for beacons or one-time notices
         self.protocol   (kwargs['protocol'] if 'protocol' in kwargs else None)           # Protocol is packet type - defined by Packet inheriter
 
-        self.rssi(kwargs['rssi'] if 'rssi' in kwargs else None)
+        self.rssi       (kwargs['rssi']     if 'rssi'     in kwargs else None)           # RSSI of receiver if present
+        self._promiscuous = False
+
 
     def __str__(self):
-        return "Packet S%d D%d F%d T%d TTL%d P%d" % (self.source(), self.destination(), self.from(), self.to(), self.ttl(), self.protocol())
+        return "Packet S%d D%d F%d T%d TTL%d P%d" % (self.source(), self.destination(), self.previous(), self.next(), self.ttl(), self.protocol())
+
+    def (self, value=None):
+        if value != None:
+            self._promiscuous = value
+        return self._promiscuous
 
     def rssi(self, value=None):
-        if value == None:
-            return self._rssi
-        else:
+        if value != None:
             self._rssi = rssi
 
-    def to(self, value=None):
-        return self._field(_HEADER_TO, value) 
+        return self._rssi
 
-    def from(self, value=None):
-        return self._field(_HEADER_FROM, value)
+    def next(self, value=None):
+        return self._field(_HEADER_NEXT, value) 
+
+    def previous(self, value=None):
+        return self._field(_HEADER_PREVIOUS, value)
 
     def dest(self, value=None):
         return self._field(_HEADER_DESTINATION, value) 
@@ -297,43 +308,53 @@ def Packet(FieldRef):
         else:
             improved = False
 
-
         return route, improved
 
 #########################################################################
 # Beacon packet
 #########################################################################
 _BEACON_PROTOCOL            = const(0)
-_BEACON_NAME                = create_field(_BEACON_NAME_LEN)
-_BEACON_ADDRESS             = create_field(_ADDRESS_LEN, _BEACON_NAME)
+_BEACON_NAME                = create_field(_BEACON_NAME_LEN, _HEADER_PAYLOAD)
 _BEACON_LENGTH              = end_field(_BEACON_ADDRESS)
 
 class Beacon(Packet):
     def __init__(self, **kwargs):
         kwargs['len'] = _BEACON_LENGTH
         kwargs['protocol'] = _BEACON_PROTOCOL
+        kwargs['ttl'] = 1
+        kwargs['to'] = _BROADCAST_ADDRESS
         super(Beacon, self).__init__(**kwargs)
 
         self.name(kwargs['name'] if 'name' in kwargs else "Beacon")
-        self.address(kwargs['address'] if 'address' in kwargs else None)
 
     def __str__(self):
-        return "Beacon: [%s] N'%s' A%d" % (str(super(Beacon, self)), self.name(return_type=str), self.address())
+        return "Beacon: [%s] N'%s'" % (str(super(Beacon, self)), self.name(return_type=str))
 
     def name(self, value=None):
         return self._fields(_BEACON_NAME, value)
 
-    def address(self, value=None):
-        return self._fields(_BEACON_ADDRESS, value)
-
     def process(self, parent):
-        print(str(self))
+        with self._packet_lock:
+            # For now we just print them out
+            if parent._debug:
+                print(str(self))
 
 #########################################################################
 # Path announce
 #########################################################################
+#
+# PathAnnounce is used to advertise a path to a node, usually a gateway node.
+# It is similar to a PathReply, but adds the interval value, which denotes
+# how often the source node is sending the PathAnnounce()
+#
+# When sent to a specific node, it announces an established route.
+# When sent as broadcast, it helps establish routes (and gateway status)
+# and is rebroadcast so adjacent nodes will see it.
+#
+# At the moment, PathReply has been subsumed by PathAnnounce
+# 
 _PANN_PROTOCOL              = const(1)
-_PANN_FLAGS                 = create_field(_FLAGS_LEN)
+_PANN_FLAGS                 = create_field(_FLAGS_LEN, _HEADER_PAYLOAD)
 _PANN_FLAGS_GATEWAY             = const(0)
 _PANN_SEQUENCE              = create_field(_INTERVAL_LEN, _PANN_FLAGS)
 _PANN_INTERVAL              = create_field(_INTERVAL_LEN, _PANN_SEQUENCE)
@@ -346,13 +367,16 @@ class PathAnnounce(Packet):
         kwargs['protocol'] = _PANN_PROTOCOL
         super(PathAnnounce, self).__init__(**kwargs)
 
-        self.gateway_flag(kwargs['gw'] if 'gw' in kwargs else False)
+        self.gateway_flag(kwargs['gateway'] if 'gateway' in kwargs else False)
         self.interval(kwargs['interval'] if 'interval' in kwargs else _INTERVAL_DEFAULT)
         self.metric(kwargs['metric'] if 'metric' in kwargs else 1)
         self.sequence(kwargs['sequence'] if 'sequence' in kwargs else 0)
 
     def __str__(self):
-        return "PathAnnounce: [%s] Int %.1f M%d" % (str(super(PathAnnounce, self)), self.interval(), self.metric())
+        return "PathAnnounce: [%s] Seq%d Int %.1f M%d F0x%02x" % (str(super(PathAnnounce, self)), self.sequence(), self.interval(), self.flags(), self.metric())
+
+    def flags(self, Value=None):
+        return self._field(_PANN_FLAGS, value)
 
     def gateway_flag(self, value=None):
         return self._field_bit(_PANN_FLAGS, _PANN_FLAGS_GATEWAY, value)
@@ -374,7 +398,7 @@ class PathAnnounce(Packet):
         with parent._packet_lock:
             route, improved = super().process(parent)
             
-            if self.to() == _BROADCAST_ADDRESS:
+            if self.next() == _BROADCAST_ADDRESS:
                 # If an improved / new announce, send it on the broascast chain
                 if improved:
                     self.metric(self.metric() + 1)
@@ -383,8 +407,17 @@ class PathAnnounce(Packet):
 #########################################################################
 # Path Request
 #########################################################################
+#
+# A path request is sent by a node when it needs to know a route to a specific target
+# node.  This packet is always braodcast rather than single address.
+#
+# This packet will be rebroadcast until it reaches all nodes.  This will
+# partially build routing tables through the N-1 nodes handling the packets
+# but will result in a PathReply from the destination node indicating
+# to the caller the node that returned it plus the metric to that node.
+#
 _PREQ_PROTOCOL              = const(2)
-_PREQ_FLAGS                 = create_field(_FLAGS_LEN)
+_PREQ_FLAGS                 = create_field(_FLAGS_LEN, _HEADER_PAYLOAD)
 _PREQ_FLAGS_GATEWAY             = const(0)
 _PREQ_SEQUENCE              = create_field(_SEQUENCE_NUMBER_LEN, _PREQ_FLAGS)
 _PREQ_METRIC                = create_field(_METRIC_LEN, _PREQ_SEQUENCE)
@@ -394,14 +427,18 @@ class PathRequest(Packet):
     def __init__(self, **kwargs):
         kwargs['len'] = _PREQ_LENGTH
         kwargs['protocol'] = _PREQ_PROTOCOL
+        kwargs['to'] = _BROADCAST_ADDRESS
         super(PathRequest, self).__init__(**kwargs)
 
-        self.gateway_flag(kwargs['gw'] if 'gw' in kwargs else False)
+        self.gateway_flag(kwargs['gateway'] if 'gateway' in kwargs else False)
         self.sequence(kwargs['sequence'] if 'sequence' in kwargs else None)
         self.metric(kwargs['metric'] if 'metric' in kwargs else 1)
 
     def __str__(self):
-        return "PathRequest: [%s] Seq%d M%d" % (str(super(PathRequest, self)), self.sequence(), self.metric())
+        return "PathRequest: [%s] F%0x02 Seq%d M%d" % (str(super(PathRequest, self)), self.flags(), self.sequence(), self.metric())
+
+    def flags(self, value=None):
+        return self._field(_PREQ_FLAGS, value)
 
     def gateway_flag(self, value=None):
         return self._field_bit(_PREQ_FLAGS, _PREQ_FLAGS_GATEWAY, value)
@@ -419,16 +456,16 @@ class PathRequest(Packet):
             # Return route if we created a new one
             route, improved = super().process(parent)
 
-            # If to us, decide if to send PathReply
+            # If to us, decide if to send PathAnnounce
             if self.destination() == parent.address:
                 # Only send pathreply if it's been long enough since last one
                 if route.is_reply_delay():
                     route.set_reply_delay()
                     # This a a path request that arrived at destination - generate reply
-                    parent.send_packet(PathReply(dest=self.source(), sequence=self.sequence(), metric=self.metric()))
+                    parent.send_packet(PathAnnounce(dest=self.source(), sequence=self.sequence(), metric=self.metric(), gateway=parent._gateway))
 
             # Otherwise, if this is a broadcast packet, continue to flood the network
-            elif self.to() == _BROADCAST_ADDRESS:
+            elif self.next() == _BROADCAST_ADDRESS:
                 # If route was improved, send it along the broadcast chain
                 if improved:
                     # retransmit the packet if ttl is still non-zero
@@ -439,55 +476,65 @@ class PathRequest(Packet):
                 # Ignore directed PathRequests for now
                 pass
 
-#########################################################################
-# Path Reply
-#########################################################################
-_PREP_PROTOCOL              = const(3)
-_PREP_FLAGS                 = create_field(_FLAGS_LEN)
-_PREP_FLAGS_GATEWAY             = const(0)
-_PREP_SEQUENCE              = create_field(_SEQUENCE_NUMBER_LEN, _PREP_FLAGS)
-_PREP_METRIC                = create_field(_METRIC_LEN, _PREP_SEQUENCE)
-_PREP_LENGTH                = end_field(_PREP_METRIC)
-
-class PathReply(Packet):
-    def __init__(self, **kwargs):
-        kwargs['len'] = _PREP_LENGTH
-        kwargs['protocol'] = _PREP_PROTOCOL
-        super(PathReply, self).__init__(**kwargs)
-
-        self.sequence(kwargs['sequence'] if 'sequence' in kwargs else 0)
-        self.metric(kwargs['metric'] if 'metric' in kwargs else 0)
-
-    def __str__(self):
-        return "PathReply: [%s] Seq%d M%d" % (str(super(PathReply, self)), self.sequence(), self.metric())
-
-    def gateway_flag(self, value):
-        return self._field_bit(_PREP_FLAGS, _PREP_FLAGS_GATEWAY, value)
-
-    def sequence(self):
-        return self._field(_PREP_SEQUENCE, value)
-
-    def metric(self, value=None):
-        return self._field(_PREP_METRIC, value)
-
-    def process(self, parent):
-        # Process the route information
-        route, improved = super().process(parent)
-
-        # If directly to us, move any route-pending packets to active queue, if we have a route to the source
-        if self.destination() == self.address:
-            # Move all pending packets to the transmit queue
-            packet = True
-            while packet != None:
-                packet = route.get_pending_packet()
-                if packet:
-                    parent.send_packet(packet)
+###  #########################################################################
+###  # Path Reply
+###  #########################################################################
+###  #
+###  # A path reply is returned by the destination node receiving a PathRequest.
+###  # It is always a unicast.  The intermediate nodes should have built enough
+###  # of a route to deliver the packet back to the source in an optimal route.
+###  #
+###  _PREP_PROTOCOL              = const(3)
+###  _PREP_FLAGS                 = create_field(_FLAGS_LEN, _HEADER_PAYLOAD)
+###  _PREP_FLAGS_GATEWAY             = const(0)
+###  _PREP_SEQUENCE              = create_field(_SEQUENCE_NUMBER_LEN, _PREP_FLAGS)
+###  _PREP_METRIC                = create_field(_METRIC_LEN, _PREP_SEQUENCE)
+###  _PREP_LENGTH                = end_field(_PREP_METRIC)
+###  
+###  class PathReply(Packet):
+###      def __init__(self, **kwargs):
+###          kwargs['len'] = _PREP_LENGTH
+###          kwargs['protocol'] = _PREP_PROTOCOL
+###          super(PathReply, self).__init__(**kwargs)
+###  
+###          self.sequence(kwargs['sequence'] if 'sequence' in kwargs else 0)
+###          self.metric(kwargs['metric'] if 'metric' in kwargs else 0)
+###          self.gateway_flag(kwargs['gateway'] if 'gateway' in kwargs else False)
+###  
+###      def __str__(self):
+###          return "PathReply: [%s] F0x%02x Seq%d M%d" % (str(super(PathReply, self)), self.flags(), self.sequence(), self.metric())
+###  
+###      def gateway_flag(self, value):
+###          return self._field_bit(_PREP_FLAGS, _PREP_FLAGS_GATEWAY, value)
+###  
+###      def sequence(self):
+###          return self._field(_PREP_SEQUENCE, value)
+###  
+###      def metric(self, value=None):
+###          return self._field(_PREP_METRIC, value)
+###  
+###      def process(self, parent):
+###          # Process the route information
+###          route, improved = super().process(parent)
+###  
+###          # If directly to us, move any route-pending packets to active queue, if we have a route to the source
+###          if self.destination() == self.address:
+###              # Move all pending packets to the transmit queue
+###              packet = True
+###              while packet != None:
+###                  packet = route.get_pending_packet()
+###                  if packet:
+###                      parent.send_packet(packet)
 
 #########################################################################
 # Path Error
 #########################################################################
+#
+# A PathError is returned to the source for any packet that cannot be
+# delivered.
+#
 _PERR_PROTOCOL              = const(4)
-_PERR_ADDRESS               = create_field(_ADDRESS_LEN)
+_PERR_ADDRESS               = create_field(_ADDRESS_LEN, _HEADER_PAYLOAD)
 _PERR_SEQUENCE              = create_field(_SEQUENCE_NUMBER_LEN, _PERR_ADDRESS)
 _PERR_REASON                = create_field(_REASON_LEN, _PERR_SEQUENCE)
 _PERR_LENGTH                = end_field(_PERR_REASON)
@@ -502,7 +549,7 @@ class PathError(Packet):
         self.reason(kwargs['reason'] if 'reason' in kwargs else 0)
 
     def __str__(self):
-        return "PathError: [%s] Seq%d R%d" % (str(super(PathError, self)), self.ttl(), self.sequence(), self.readon())
+        return "PathError: [%s] A%d Seq%d R%d" % (str(super(PathError, self)), self.address(), self.sequence(), self.readon())
 
     def address(self, value=None):
         return self._field(_PERR_ADDRESS, value)
@@ -513,59 +560,57 @@ class PathError(Packet):
     def reason(self, value=None):
         return self._field(_PERR_REASON, value)
 
+    # Don't call packet.process since we do not care routing info
     def process(self, parent):
-        print(str(self))
+        with parent._packet_lock:
+            if parent._debug:
+                print(str(self))
 
 
 #########################################################################
 # Data packet.
 #########################################################################
-_DATA_PROTOCOL              = const(5)
-_DATA_STREAM                = create_field(_STREAM_NUMBER_LEN)
-_DATA_SEQUENCE              = create_field(_STREAM_SEQUENCE_LEN, _DATA_STREAM)
-_DATA_WINDOW                = create_field(_STREAM_SEQUENCE_LEN, _DATA_SEQUENCE)
-_DATA_LENGTH                = end_field(_DATA_WINDOW)
+#
+# A Data packet is used to convey any data between nodes.  This packet
+# will be overloaded for any purpose that is needed.
+#
+_DATA_LENGTH                = end_field(_HEADER_PAYLOAD)
 
 class DataPacket(Packet):
     def __init__(self, **kwargs):
         kwargs['len'] = _DATA_LENGTH
-        kwargs['protocol'] = _DATA_PROTOCOL
         super(DataPacket, self).__init__(**kwargs)
 
-        self.stream(kwargs['stream'] if 'stream' in kwargs else 0)
-        self.sequence(kwargs['sequence'] if 'sequence' in kwargs else 0)
-        self.window(kwargs['window'] if 'window' in kwargs else 0)
-
-        if 'payload' in kwargs:
-            self._data[_DATA_LENGTH:] = kwargs['payload']
-
     def __str__(self):
-        return "Data: [%s] Str%d Seq%d W%d Len%d" % (str(super(DataPacket, self)), self.stream(), self.sequence(), self.window())
+        return "Data: [%s] '%s'" % (str(super(DataPacket, self)), self.payload())
 
-    def stream(self, value=None):
-        return self._field(_DATA_STREAM, value)
+    # Set or read the payload portion of the data
+    def payload(self, start=0, end=None, value=None):
+        start += _DATA_LENGTH
+        end = -1 if end == None else end + _DATA_LENGTH
 
-    def sequence(self, value=None):
-        return self._field(_DATA_SEQUENCE, value)
-
-    def window(self, value=None):
-        return self._field(_DATA_WINDOW, value)
-
-    # Return the payload portion of the data
-    def payload(self):
-        return self._data[_DATA_LENGTH:]
-
-    def process(self, parent):
-        # If this packet has found it's recipient, put in queue
-        if self.destination() == parent.address:
-            parent.put_receive_packet(self)
-
+        if value == None:
+            return self._data[start:end]
         else:
-            self.to(None)    # to will be filled in by route
-            self.from(None)  # from filled in by self.address
+            self._data[start:end] = value
+        return value
 
-            # Route the packet onward if ttl not expired
-            parent.send_packet(self, ttl=True)
+    # We don't call packet.process() since we are not getting any routing info from
+    # this packet.
+    def process(self, parent, this_node):
+        queued = False
+
+        with self._packet_lock:
+            # If this packet has found it's recipient, put in queue
+            if self.destination() == parent.address:
+                parent.put_receive_packet(self)
+
+            else:
+                self.next(None)      # to will be filled in by route
+                self.previous(None)  # from filled in by self.address
+
+                # Route the packet onward if ttl not expired
+                parent.send_packet(self, ttl=True)
 
 class Route():
     def __init__(self, packet=None, lifetime=_ROUTE_LIFETIME, **kwargs):
@@ -579,10 +624,12 @@ class Route():
         self._announce = 0
         self._reply_timeout = 0
 
-        if type(packet) = PathReply or type(packet) == PathAnnounce or type(packet) == PathRequest:
+        # if type(packet) = PathReply or type(packet) == PathAnnounce or type(packet) == PathRequest:
+        if packet != None:
             self.update(reply)
 
         else:
+            # Otherwise update from keyword arguments
             self.update(**kwargs)
 
     # Set reply delay period
@@ -605,7 +652,7 @@ class Route():
         if packet != None:
             self._sequence = packet.sequence()
             self._metric   = packet.metric()
-            self._to       = packet.source() if type(packet) == PathAnnouce else packet.source()
+            self._next     = packet.source() if type(packet) == PathAnnouce else packet.source()
             if type(packet) == PathAnnounce:
                 self._gateway  = packet.gateway_flags()
                 self._announce = packet.interval()
@@ -617,8 +664,8 @@ class Route():
                 self._metric = kwargs['metric']
             if 'to' in kwargs:
                 self._to = kwargs['to']
-            if 'gw' in kwargs:
-                self._gateway = kwargs['gw']
+            if 'gateway' in kwargs:
+                self._gateway = kwargs['gateway']
             if 'announce' in kwargs:
                 self._announce = kwargs['announce']
 
@@ -640,11 +687,11 @@ class Route():
         else:
             self._metric = Value
 
-    def to(self, value=None):
+    def next(self, value=None):
         if value == None:
-            return self._to
+            return self._next
         else:
-            self._to = value
+            self._next = value
 
     def is_gateway(self, value=None):
         if value == None:
@@ -667,25 +714,38 @@ class MeshNet(RadioDriver):
         self._receive_queue = queue()
         self._hwmp_sequence_number = 0
         self._hwmp_sequence_lock = lock()
+        self._promiscuous = False
+        self._debug = False
 
         # Defines routes to nodes
         self._routes = {}
         # Defines root announced nodes
-        self._packets_errors_crc = 0
-        self._packets_processed = 0
-        self._packets_ignored = 0
+        self._packet_errors_crc = 0
+        self._packet_processed = 0
+        self._packet_ignored = 0
+        self._packet_lock = rlock()
 
-        self._announce_interval = float(kwargs['interval']) if 'interval' in kwargs else 0
+        self._gateway = kwargs['gateway'] if 'gateway' in kwargs else False
+        if self._gateway:
+            self._announce_interval = float(kwargs['interval']) if 'interval' in kwargs else _DEFAULT_ANNOUNCE
 
         self._PROTOCOLS = {
                 _PANN_PROTOCOL: PathAnnounce,
                 _PREQ_PROTOCOL: PathRequest,
                 _PREP_PROTOCOL: PathReply,
                 _PERR_PROTOCOL: PathError,
-                _DATA_PROTOCOL: DataPacket,
+                None          : DataPacket,
         }
 
-    def init(self):
+    # In promiscuous mode, all received packets are dropped into the receive queue, as well
+    # as being processed.
+    def set_promiscuous(self, mode=True):
+        self._promiscuous = mode
+
+    def set_debug(self, mode = True):
+        self._debug = debug
+
+    def start(self):
         self._spi = SPI(baudrate=10000000, polarity=0, phase=0, bits=8, firstbit = SPI.MSB,
                         sck = Pin(_SX127x_SCK, Pin.OUT, Pin.PULL_DOWN),
                         mosi = Pin(_SX127x_MOSI, Pin.OUT, Pin.PULL_UP),
@@ -698,13 +758,13 @@ class MeshNet(RadioDriver):
         self._power = None # not True nor False
 
         # Perform base class init
-        super().init(_SX127x_WANTED_VERSION)
+        super().start(_SX127x_WANTED_VERSION)
 
         # Set power state
         self.set_power()
 
         # Start announce if requested
-        if self._announce_interval != 0:
+        if self._gateway:
             self.announce_start(self._announce_interval)
 
     def announce_start(self, interval):
@@ -730,16 +790,14 @@ class MeshNet(RadioDriver):
             countdown -= 1
             if countdown <= 0:
                 countdown += interval
-                packet = PathAnnounce(dest=_BROADCAST_ADDRESS, gw=True, address=self.address, interval=interval, sequence=self._create_sequence_number())
+                packet = PathAnnounce(dest=_BROADCAST_ADDRESS, gateway=self._gateway, address=self.address, interval=interval, sequence=self._create_sequence_number())
                 self.send_packet(packet)
 
         return 0
 
+    # Return the protocol wrapper or Data is not otherwise defined
     def get_protocol_wrapper(self, protocol):
-        if protocol in self._PROTOCOLS:
-            return self._PROTOCOLS[protocol]
-        else
-            return None
+        return self._PROTOCOLS[protocol] if protocol in self._PROTOCOLS else self._PROTOCOLS[None]
 
     # Default to search routes table
     def _define_route(self, packet):
@@ -829,45 +887,40 @@ class MeshNet(RadioDriver):
 
     # Enwrap the packet with a class object for the particular message type
     def wrap_packet(self, data, rssi=None):
-        wrapper = self.get_protocol_wrapper(data[_HEADER_PROTOCOL])
-        if wrapper:
-            # Wrap it with the protocol structure specific to the type
-            return wrapper(data=data, rssi=rssi)
-        else:
-            # Wrap it with generic data wrapper
-            return self.Packet(data=data, rssi=rssi)
+        return self.get_protocol_wrapper(data[_HEADER_PROTOCOL])(data=data, rssi=rssi])
         
     # Duplicate packet with new private data
     def dup_packet(self, packet):
-        return wrap_packet(bytearray(packet.data()), packet.rssi)
-
-    def create_packet(self, source, dest, protocol, data):
-        data = bytearray(_HEADER_LENGTH) + bytearray(data)
-        data[_HEADER_PROTOCOL] = protocol
-        packet = self.wrap_packet(data)
-        packet.source(source)
-        packet.dest(dest)
-        return packet
+        return wrap_packet(bytearray(packet.data()), rssi=packet.rssi)
 
     def onReceive(self, packet, crc_ok, rssi):
         if crc_ok:
             packet = self.wrap_packet(packet, rssi)
 
-            to = packet.to()
+            to = packet.next()
 
-            print("onReceive: packet %s" % (str(packet)))
+            if self._debug:
+                print("onReceive: packet %s" % (str(packet)))
+
+            # In promiscuous, deliver to receiver so it can handle it (but not process it)
+            if self._promiscuous:
+                packet.promiscuous(True)
+                self.put_receive_queue(packet)
+
             if to == _BROADCAST_ADDRESS or to == self.address:
-                self._packets_processed += 1
+                self._packet_processed += 1
                 # To us or broadcasted
-                packet.process(self):
+                packet.process(self)
 
             else:
-                self._packets_ignored += 1
+                # It is non processed
+                self._packet_ignored += 1
+
         else:
-            self._packets_error_crc += 1
+            self._packet_errors_crc += 1
 
 
-    def get_receive_packet(self):
+    def receive_packet(self):
         return self._receive_queue.get()
 
     def put_receive_packet(self, packet):
@@ -901,11 +954,11 @@ class MeshNet(RadioDriver):
             print("Expired: %s" str(packet))
         else:
             # Label packets as coming from us if it doesn't have an address
-            if packet.from() == None:
-                packet.from(self.address)
+            if packet.previous() == None:
+                packet.previous(self.address)
 
             # If no direct recipient has been defined, we go through routing table
-            if packet.to() == None:
+            if packet.next() == None:
                 # Look up the path to the destination
                 route = self._find_route(packet.destination())
 
@@ -916,14 +969,14 @@ class MeshNet(RadioDriver):
                     request = PathRequest(dest=route.desination(), sequence=self._create_sequence_number())
                     route.put_pending_packet(packet)
 
-                elif route.to() == None:
+                elif route.next() == None:
                     # We have a pending route, so append packet to queue only.
                     request = None
                     route.put_pending_packet(packet)
 
                 else:
                     # Label the destination for the packet
-                    packet.to(route.to())
+                    packet.next(route.next())
                     request = packet
 
                 # Transmit the request if we created one or else the actual packet
@@ -945,13 +998,13 @@ class MeshNet(RadioDriver):
                     if len(self._transmit_queue) == 1:
                         self.transmit_packet(packet.data())
 
-    def close(self):
+    def stop(self):
         print("MeshNet handler close called")
         # Close DIO interrupts
         for dio in self._dio_table:
             dio.irq(handler=None, trigger=0)
 
-        super().close()
+        super().stop()
 
         # Stop announce if running
         self.announce_stop()
@@ -974,5 +1027,5 @@ class MeshNet(RadioDriver):
             super().set_power(power)
 
     def __del__(self):
-        self.close()
+        self.stop()
 

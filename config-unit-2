@@ -3,9 +3,8 @@
     "channel": "0",
     "%direction%options": ["narrow", "wide"],
     "datarate": "0",
-    "unit": "2",
     "chantype": "narrow",
-    "network": "0"
+    "network": "2"
   },
   "device": {
     "name": "meshnet_test"

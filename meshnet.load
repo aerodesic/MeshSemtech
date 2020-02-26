@@ -4,11 +4,11 @@ ulock.py
 uqueue.py
 usemaphore.py
 sx127x.py
-meshnetdomains.py
-meshnetcom.py
+meshdomains.py
+meshnet.py
 ssd1306.py
 ssd1306_i2c.py
-meshnetcom_main.py main.py
+meshnet_main.py main.py
 webserver.py
 configdata.py
 meshnetwebserver.py

@@ -239,7 +239,7 @@ class SX127x_driver:
         self._lock = rlock()
 
 
-    def init(self, wanted_version=0x12, start=True):
+    def start(self, wanted_version=0x12, start=True):
         self.reset()
 
         # Read version
@@ -584,6 +584,6 @@ class SX127x_driver:
     def _garbage_collect(self):
         gc.collect()
 
-    def close(self):
+    def stop(self):
         # Disbable interrupts 
         self.write_register(_SX127x_REG_IRQ_FLAGS_MASK, 0xFF)

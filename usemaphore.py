@@ -11,8 +11,8 @@ class semaphore():
         self._maxcount = maxcount
         self._available = maxcount if available == None else available
 
-    # Acquire N counts. if wait, then wait for available items;if false,just test
-    def acquire(self,  count=1, wait=1):
+    # Acquire N counts. if wait, then wait for available items; if false,just test
+    def acquire(self, count=1, wait=1):
         ok = False
         with self._lock:
             if wait:
@@ -38,3 +38,9 @@ class semaphore():
             if self._changed.locked():
                 self._changed.release()
             
+    def __enter__(self):
+        self.acquire()
+
+    def __exit__(self, type, value, traceback):
+        self.release()
+

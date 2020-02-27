@@ -69,7 +69,7 @@ display.show_text_wrap("Starting...")
 _ADDRESS = int(CONFIG_DATA.get("mesh.address", "1"))
 
 from meshdomains import US902_MESHNET as domain
-from meshnet import MeshNet
+from meshnet import MeshNet, DataPacket, BROADCAST_ADDRESS
 
 meshnet=MeshNet(
         domain,
@@ -125,7 +125,7 @@ def unescape_data(buffer):
 
     return bytes(out)
 
-def handle_mesh_receive(t):
+def handle_meshnet_receive(t):
     global _ADDRESS
 
     while t.running:
@@ -240,7 +240,7 @@ from time import ticks_ms, ticks_diff
 ping_counter = 0
 last_time = ticks_ms()
 
-def send_button_packet(event):
+def send_packet_button(event):
     global ping_counter
     global last_time
 
@@ -249,12 +249,13 @@ def send_button_packet(event):
     if ticks_diff(now, last_time) > 500:
         ping_counter += 1
         # Send to broadcast unit on our network
-        send_packet_to(_ADDRESS, "ping %d" % ping_counter)
+        packet = DataPacket(data="ping %d" % ping_counter, dest=2, next=BROADCAST_ADDRESS, protocol=99)
+        send_packet_to(packet)
         last_time = now
 
 # Set up interrupt on a pin to send a broadcast packet
 button = machine.Pin(0)
-button.irq(handler=send_button_packet, trigger=machine.Pin.IRQ_FALLING)
+button.irq(handler=send_packet_button, trigger=machine.Pin.IRQ_FALLING)
 
 # Start thread to handle input from Mesh network
 input_thread = thread(run=handle_meshnet_receive, stack=8192)

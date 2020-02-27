@@ -5,7 +5,7 @@ import socket
 from time import sleep
 import sys
 
-class MeshNetWebserver(thread):
+class MeshNetWebServer(thread):
     def __init__(self, config, name="MeshNetWebServer", apmode=True, display=None):
         super().__init__(name, stack=8192)
         self._config = config

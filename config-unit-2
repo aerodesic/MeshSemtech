@@ -2,6 +2,7 @@
   "mesh": {
     "channel": "0",
     "%direction%options": ["narrow", "wide"],
+    "direction": "wide",
     "datarate": "0",
     "chantype": "narrow",
     "network": "2"

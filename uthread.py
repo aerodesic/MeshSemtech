@@ -77,7 +77,7 @@ class timer(thread):
 
     def run(self, *args, **kwargs):
         sleep(self._timeout)
-        self._func(*args, **kwargs)
+        self._func(self, *args, **kwargs)
         collect()
         return 0
 

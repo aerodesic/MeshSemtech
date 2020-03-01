@@ -556,7 +556,7 @@ class SX127x_driver:
                 if packet:
                     # If a packet exists, send it.
                     if self._delay != 0:
-                        timer(self._delay, self.transmit_packet, (packet,)).start()
+                        timer(self._delay, self._transmit_packet_delay, (packet,)).start()
                     else:
                         self.transmit_packet(packet)
                 else:
@@ -564,6 +564,11 @@ class SX127x_driver:
                     self.set_receive_mode()
         else:
             print("_txhandle_interrupt: not for us %02x" % flags)
+
+    # Transmit packet from delay of timer
+    def _transmit_packet_delay(self, timer, packet):
+        self.transmit_packet(packet)
+        gc.collect()
 
     def _start_packet(self, implicit_header = False):
         self.set_standby_mode()

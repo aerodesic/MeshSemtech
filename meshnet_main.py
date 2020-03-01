@@ -149,7 +149,7 @@ def handle_meshnet_receive(t):
             # if a PING packet, reply with 'reply' packet
             if packet.payload(start=0, end=5) == b'ping ':
                 # Send response to the originating address
-                newpacket = DataPacket(payload="reply %s (%d)" % (packet.payload(start=5).decode(), packet.rssi()), dest=packet.source(), protocol=packet.protocol())
+                newpacket = DataPacket(payload="reply %s (%d)" % (packet.payload(start=5).decode(), packet.rssi()), target=packet.source(), protocol=packet.protocol())
                 print("newpacket %s" % str(newpacket))
                 meshnet.send_packet(newpacket)
 
@@ -199,7 +199,7 @@ def handle_meshnet_send(t):
                         payload = unescape_data(payload)
 
                         # Create a packet to the destination address with the declared payload and protocol
-                        packet = DataPacket(protocol=int(protocol), dest=int(address), payload=payload)
+                        packet = DataPacket(protocol=int(protocol), target=int(address), payload=payload)
                         mesh_net.send_packet(packet)
                     else:
                         print("-ERROR: wanted %04x found %04x" % (found, cksum))
@@ -249,7 +249,7 @@ def send_packet_button(event):
     if ticks_diff(now, last_time) > 500:
         ping_counter += 1
         # Send to broadcast unit on our network
-        packet = DataPacket(payload="ping %d" % ping_counter, dest=int(CONFIG_DATA.get("mesh.target")), next=BROADCAST_ADDRESS, protocol=99)
+        packet = DataPacket(payload="ping %d" % ping_counter, target=int(CONFIG_DATA.get("mesh.target")), protocol=99)
         # send_packet_to(packet)
         meshnet.send_packet(packet)
         last_time = now

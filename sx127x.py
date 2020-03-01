@@ -139,7 +139,7 @@ _BANDWIDTH_BINS = (
 #
 #    write_register(<register>, <value>                Write register value
 #
-#    attach_interrupt(<dio#>, <callback>)              Enable interrupt, callback supplied (None causes disable)
+#    attach_interrupt(<dio#>, edge, <callback>)        Enable interrupt, rising edge if <edge> true. callback supplied (None causes disable)
 #         Call attach_interrupt with None callback to disable
 #
 #    onReceive(packet, crc_ok, rssi)                   Callback to receive a packet
@@ -183,31 +183,23 @@ class SX127x_driver:
         self._packets_memory_errors = 0
 
         self._pll_step = self._xtal / 2**19
-        print("PLL step %f" % self._pll_step)
+        # print("PLL step %f" % self._pll_step)
 
         # Define channel table for this frequency
         if 'channels' in self._domain:
             self._channels = {}
             for channel in self._domain['channels']:
-                print("testing channel %s" % channel)
-                # Process the range and type of the channel
-                chantype = channel['type']
-
-                if chantype not in self._channels:
-                    self._channels[chantype] = {}
-
                 freq = channel['freq'][0]
                 step = channel['freq'][1]
                 for c in range(channel['chan'][0], channel['chan'][1] + 1):
                     # self._channels[chantype][c] = { 'dr': channel['dr'], 'freq': self._calc_freq(freq) }
-                    self._channels[chantype][c] = { 'dr': channel['dr'], 'freq': self._calc_freq(freq), 'hz': freq }
+                    # Add hz to table for debugging purposes - not really used
+                    self._channels[c] = { 'dr': channel['dr'], 'freq': self._calc_freq(freq), 'hz': freq }
                     freq += step
 
-            # Dump for inspection
-            for t in self._channels:
-                channels = self._channels[t]
-                for c in channels:
-                    print("%s %d: %s" % (t, c, self._channels[t][c]))
+            # # Dump for inspection
+            # for c in self._channels:
+            #     print("%d: %s" % (c, self._channels[c]))
 
         else:
             raise LorDeviceException("'channels' not found in domain")
@@ -239,7 +231,7 @@ class SX127x_driver:
         self._lock = rlock()
 
 
-    def start(self, wanted_version=0x12, start=True):
+    def start(self, wanted_version=0x12, activate=True):
         self.reset()
 
         # Read version
@@ -268,9 +260,9 @@ class SX127x_driver:
 
         # Configure the unit for receive (may override several of above)
         if self._channel != None:
-            self.set_channel(self._channel[0], direction=self._channel[1], data_rate=self._channel[2])
+            self.set_channel(self._channel)
         else:
-            self.set_channel((0, 'up', 0))
+            self.set_channel((0, -1))
 
         # LNA Boost
         self.write_register(_SX127x_REG_LNA, self.read_register(_SX127x_REG_LNA) | 0x03)  # MANIFEST CONST?
@@ -289,13 +281,15 @@ class SX127x_driver:
 
         # if self._hop_period != 0:
         #     # Catch the FSHH step
-        #     self.attach_interrupt(1, self._fhss_interrupt)
+        #     self.attach_interrupt(1, True, self._fhss_interrupt)
 
-        if start:
+        if activate:
             # Place in standby mode
             self.set_receive_mode()
         else:
             self.set_standby_mode()
+
+        # print("SX127x started")
 
 
     # If we cannot do a block write, write byte at a time
@@ -320,7 +314,7 @@ class SX127x_driver:
     def read_register(self, reg):
         raise Exception("read_register not defined.")
 
-    def attach_interrupt(self, dio, callback):
+    def attach_interrupt(self, dio, edge, callback):
         raise Exception("enable_interrupt not defined.")
 
     def set_power(self, power=True):
@@ -356,7 +350,7 @@ class SX127x_driver:
     def set_receive_mode(self):
         # print("receive mode")
         # self.set_channel(self._receive_channel)
-        self.attach_interrupt(0, self._rxhandle_interrupt)
+        self.attach_interrupt(0, True, self._rxhandle_interrupt)
         # self.write_register(_SX127x_REG_OP_MODE, _SX127x_MODE_LONG_RANGE | _SX127x_MODE_RX_SINGLE)
         self.write_register(_SX127x_REG_OP_MODE, _SX127x_MODE_LONG_RANGE | _SX127x_MODE_RX_CONTINUOUS)
         self.write_register(_SX127x_REG_DIO_MAPPING_1, 0b00000000)
@@ -365,20 +359,22 @@ class SX127x_driver:
         # print("transmit mode")
         # Reset SEED
         # self.set_channel(self._transmit_channel)
-        self.attach_interrupt(0, self._txhandle_interrupt)
+        self.attach_interrupt(0, True, self._txhandle_interrupt)
         self.write_register(_SX127x_REG_OP_MODE, _SX127x_MODE_LONG_RANGE | _SX127x_MODE_TX)
         self.write_register(_SX127x_REG_DIO_MAPPING_1, 0b01000000)
 
     # Level in dBm
-    def set_tx_power(self, level, mode="PA"):
-        self._tx_power = (level, mode)
+    def set_tx_power(self, tx_power):
+        if type(tx_power) == int:
+            tx_power = (tx_power, "PA")
 
-        if mode == "PA":
+        self._tx_power = tx_power
+        if tx_power[1] == "PA":
             # PA Boost mode
-            level = min(max(int(round(level) - 2), 0), 15)
-            self.write_register(_SX127x_REG_PA_CONFIG, _SX127x_PA_BOOST | level)
+            level = min(max(int(round(tx_power[0]) - 2), 0), 15)
+            self.write_register(_SX127x_REG_PA_CONFIG, _SX127x_PA_BOOST | tx_power[0])
         else:
-            self.write_register(_SX127x_REG_PA_CONFIG, 0x70 | (min(max(level, 0), 15)))
+            self.write_register(_SX127x_REG_PA_CONFIG, 0x70 | (min(max(tx_power[0], 0), 15)))
 
     def get_tx_power(self):
         return self._tx_power
@@ -386,30 +382,47 @@ class SX127x_driver:
     #
     # set channel and optional data_rate
     #
-    # if no data_rate, calculates rate from channel configuration.
-    # If data_rate < 0, then no change will be made to data_rate, etc.
-    def set_channel(self, channel, direction='up', data_rate=None):
-        print("set channel to '%s' %d dr %d" % (direction, channel, data_rate))
-        if channel in self._channels[direction]:
-            self._current_channel = self._channels[direction][channel]
+    # Parameters:
+    #    channel              Channel, which defines frequency and bandwidth
+    #    datarate             Datarate for channel; None doesn't change datarate; -1 sets to default.
+    #                         Note: if datarate is invalid for new channel, it will be set to the default.
+    # Options:
+    #    set_channel(<channel>, <datarate>)     # Switch to specific channel and datarate
+    #    set_channel((<channel>, <datarate>))   # Switch to specific channel and datarate from tuple
+    #    set_channel(<channel>)                 # Set channel with default datarate
+    #    set_channel(datarate=<datarate>)       # Only change datarate
+    #
+    def set_channel(self, channel=None, datarate=None):
+        # Normalize to get channel and datarate
+        if type(channel) == tuple:
+            new_channel = channel[0]
+            # New datarate is from tuple if defined else from current datarate
+            new_datarate = channel[1] if len(channel) == 2 else self._channel[1]
 
-            info = self._current_channel['freq']
+        else:
+            # Fetch defaults from current channel values
+            new_channel = self._channel[0] if channel == None else channel
+            new_datarate = self._channel[1] if datarate == None else datarate
+
+        if new_channel in self._channels:
+            current_channel = self._channels[new_channel]
+
+            info = current_channel['freq']
             self.write_register(_SX127x_REG_FREQ_MSB, info[0])
             self.write_register(_SX127x_REG_FREQ_MID, info[1])
             self.write_register(_SX127x_REG_FREQ_LSB, info[2])
 
-            # If no datarate selected, use the channel-specific default
-            if data_rate == None:
-                data_rate = self._current_channel['dr'][0]
+            # If forcing default or new datarate is invalid, set to default (lowest) for channel
+            if new_datarate not in current_channel['dr']:
+                new_datarate = current_channel['dr'][0]
 
-            # If valid datarate, set bandwidth, spreading factor and tx power
-            # I.e. call set_channel with data_rate=-1 to avoid changing values
-            if data_rate >= 0 and data_rate < len(self._data_rates):
-                self.set_bandwidth(self._data_rates[data_rate]['bw'])
-                self.set_spreading_factor(self._data_rates[data_rate]['sf'])
-                self.set_tx_power(self._data_rates[data_rate]['tx'])
+            self.set_bandwidth(self._data_rates[new_datarate]['bw'])
+            self.set_spreading_factor(self._data_rates[new_datarate]['sf'])
+            self.set_tx_power(self._data_rates[new_datarate]['tx'])
     
-            self._channel = (channel, direction, data_rate)
+            self._channel = (new_channel, new_datarate)
+
+            # print("set channel to %d with dr %d" % (new_channel, new_datarate))
 
         else:
             raise Exception("Invalid channel: %s" % channel)
@@ -535,7 +548,6 @@ class SX127x_driver:
 
         # print("_txhandle_interrupt fired on %s %02x" % (str(event), flags))
         if flags & _SX127x_IRQ_TX_DONE:
-            # Say processed
 
             # Transmit interrupt
             with self._lock:
@@ -563,7 +575,7 @@ class SX127x_driver:
         current = self.read_register(_SX127x_REG_PAYLOAD_LENGTH)
         size = min(len(buffer), (_SX127x_MAX_PACKET_LENGTH - _TX_FIFO_BASE - current))
 
-        # print("_write_packet: writing %d: '%s'" % (size, buffer.decode()))
+        # print("_write_packet: writing %d: '%s'" % (size, buffer))
 
         self.write_buffer(_SX127x_REG_FIFO, buffer, size)
 
@@ -573,7 +585,7 @@ class SX127x_driver:
         return size
 
     def transmit_packet(self, packet, implicit_header = False):
-        # print("transmit_packet lock %s" % self._lock.locked())
+        # print("transmit_packet len %d lock %s" % (len(packet), self._lock.locked()))
         with self._lock:
             # print("Starting packet")
             self._start_packet(implicit_header)

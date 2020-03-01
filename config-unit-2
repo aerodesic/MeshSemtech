@@ -1,11 +1,9 @@
 {
   "mesh": {
     "channel": "0",
-    "%direction%options": ["narrow", "wide"],
-    "direction": "wide",
-    "datarate": "0",
-    "chantype": "narrow",
-    "network": "2"
+    "datarate": "-1",
+    "address": "2"
+    "target": "1"
   },
   "device": {
     "name": "meshnet_test"

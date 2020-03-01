@@ -31,6 +31,10 @@ class thread():
                 _thread.stack_size(self._stack)
             _thread.start_new_thread(self._run, args, kwargs)
 
+    # start and restart both work equivalently, but this helps document intent better
+    def restart(self, *args, **kwargs):
+        self.start(*args, **kwargs)
+
     # Calls user 'run' method and saves return code
     def _run(self, *args, **kwargs):
         # Capture our ident
@@ -58,24 +62,22 @@ class thread():
 # A timer object, similar to threading.Timer()
 #
 # Create a timer:
-#    t=timer(<delay>, func_to_call, optional arg and kwarg parameters passed to func_to_call)
-#    t.start()  # Delays then calls func_to_call.
+#    t=timer(<delay>, func_to_call)
+#    t.start(<args>,<kwargs>)  # Delays then calls func_to_call.
 #
 # It appears the functionality of thread allows recurring calls to start, allowing restarting of timer.
 # BEWARE starting a currently-running timer.  Perhaps I need a flag for this :-)
 #
 from time import sleep
 class timer(thread):
-    def __init__(self, timer, func, *args, **kwargs):
-        self._timer = timer
-        self._args = args
-        self._kwargs = kwargs
+    def __init__(self, timeout, func):
+        self._timeout = timeout
         self._func = func
         super().__init__()
 
-    def run(self):
-        sleep(self._timer)
-        self._func(*self._args, **self._kwargs)
-        del(self)
+    def run(self, *args, **kwargs):
+        sleep(self._timeout)
+        self._func(*args, **kwargs)
         collect()
+        return 0
 

@@ -422,7 +422,7 @@ class SX127x_driver:
     
             self._channel = (new_channel, new_datarate)
 
-            # print("set channel to %d with dr %d" % (new_channel, new_datarate))
+            print("set channel to %d with dr %d" % (new_channel, new_datarate))
 
         else:
             raise Exception("Invalid channel: %s" % channel)
@@ -556,7 +556,7 @@ class SX127x_driver:
                 if packet:
                     # If a packet exists, send it.
                     if self._delay != 0:
-                        timer(self._delay, self._transmit_packet_delay, (packet,)).start()
+                        timer(self._delay, self._transmit_packet_delay).start(packet)
                     else:
                         self.transmit_packet(packet)
                 else:

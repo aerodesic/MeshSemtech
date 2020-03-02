@@ -75,8 +75,8 @@ meshnet=MeshNet(
         address=_ADDRESS,
         channel=(int(CONFIG_DATA.get("mesh.channel", default='64')), int(CONFIG_DATA.get("mesh.datarate", default='-1'))),
 )
-meshnet.set_promiscuous(True)
-meshnet.set_debug(True)
+# meshnet.set_promiscuous(True)
+# meshnet.set_debug(True)
 meshnet.start()
 
 # Start web server
@@ -127,33 +127,38 @@ def handle_meshnet_receive(t):
     global _ADDRESS
 
     while t.running:
-        # Wait for a packet from the network
-        packet = meshnet.receive_packet()
-        led.on()
+        try:
+            # Wait for a packet from the network
+            packet = meshnet.receive_packet()
+            led.on()
 
-        # Display the packet contents
-        if packet.promiscuous():
-            print("RCVD: %s" % (str(packet)))
+            # Display the packet contents
+            if packet.promiscuous():
+                print("RCVD: %s" % (str(packet)))
 
-        elif type(packet) == DataPacket:
-            # Process the packet if we can
-            display.show_text_wrap("from %d %d" % (packet.source(), packet.rssi()), start_line=1, clear_first=False)
-            display.show_text_wrap("protocol %d" % packet.protocol(), start_line=2, clear_first=False)
+            elif type(packet) == DataPacket:
+                # Process the packet if we can
+                display.show_text_wrap("from %d %d" % (packet.source(), packet.rssi()), start_line=1, clear_first=False)
+                display.show_text_wrap("%s" % packet.payload().decode(), start_line=2, clear_first=False)
+    
+                # output = "%d;%d;%s;%d" % (packet.source(), packet.protocol(), escape_buffer(packet.payload()), packet.rssi())
+                # cksum = checksum_buffer(output)
+            
+                # Send packet as text: <source address>;<protocol id>;<rssi>;<payload>:<checksum of chars before ';'>
+                # sys.stdout.write("$%s:%d\r\n" % (output, cksum % 0x10000))
 
-            output = "%d;%d;%s;%d" % (packet.source(), packet.protocol(), escape_buffer(packet.payload()), packet.rssi())
-            cksum = checksum_buffer(output)
-        
-            # Send packet as text: <source address>;<protocol id>;<rssi>;<payload>:<checksum of chars before ';'>
-            sys.stdout.write("$%s:%d\r\n" % (output, cksum % 0x10000))
+                # if a PING packet, reply with 'reply' packet
+                if packet.payload(start=0, end=5) == b'ping ':
+                    # Send response to the originating address
+                    newpacket = DataPacket(payload="reply %s (%d)" % (packet.payload(start=5).decode(), packet.rssi()), target=packet.source(), protocol=packet.protocol())
+                    # print("reply %s" % str(newpacket))
+                    meshnet.send_packet(newpacket)
 
-            # if a PING packet, reply with 'reply' packet
-            if packet.payload(start=0, end=5) == b'ping ':
-                # Send response to the originating address
-                newpacket = DataPacket(payload="reply %s (%d)" % (packet.payload(start=5).decode(), packet.rssi()), target=packet.source(), protocol=packet.protocol())
-                print("newpacket %s" % str(newpacket))
-                meshnet.send_packet(newpacket)
+            led.off()
 
-        led.off()
+        except Exception as e:
+            print("handle_mesh_receive: %s" % str(e))
+
 
     return 0
 
@@ -269,9 +274,9 @@ display.show_text_wrap(CONFIG_DATA.get("apmode.essid"), clear_first=False)
 
 
 # Watch memory
-while False:
+while True:
     sleep(5)
     gc.collect()
     display.show_text_wrap("Mem: %d" % gc.mem_free(), start_line=6, clear_first=False)
-    display.show_text_wrap("Tx %d Rx %d" % (meshnet._tx_interrupts, meshnet._rx_interrupts), start_line=7, clear_first=False)
+    display.show_text_wrap("T%d R%d I%d E%d" % (meshnet._packet_transmitted, meshnet._packet_received, meshnet._packet_ignored, meshnet._packet_errors_crc ), start_line=7, clear_first=False)
 

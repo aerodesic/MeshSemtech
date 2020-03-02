@@ -149,6 +149,16 @@ _HEADER_TTL                 = create_field(_TTL_LEN, _HEADER_PROTOCOL)
 _HEADER_LENGTH              = end_field(_HEADER_TTL)
 _HEADER_PAYLOAD             = _HEADER_LENGTH
 
+def ADDR_OF(addr):
+    if addr == 0:
+        return "NULL"
+
+    elif addr == BROADCAST_ADDRESS:
+        return "BCAST"
+
+    else:
+        return "%d" % addr
+
 class Packet(FieldRef):
 
     def __init__(self, **kwargs):
@@ -178,7 +188,7 @@ class Packet(FieldRef):
 
 
     def __str__(self):
-        return "Packet N=%d P=%d T=%d S=%d TTL=%d Proto=%d Len=%d" % (self.nexthop(), self.previous(), self.target(), self.source(), self.ttl(), self.protocol(), len(self.data()))
+        return "Packet N=%s P=%s T=%s S=%s TTL=%d Proto=%d Len=%d" % (ADDR_OF(self.nexthop()), ADDR_OF(self.previous()), ADDR_OF(self.target()), ADDR_OF(self.source()), self.ttl(), self.protocol(), len(self.data()))
 
     def promiscuous(self, value=None):
         if value != None:
@@ -293,7 +303,8 @@ class RouteAnnounce(Packet):
         with parent._packet_lock:
             route = parent.update_route(target=self.source(), nexthop=self.previous(), sequence=self.sequence(), metric=self.metric(), gateway_flag=self.gateway_flag())
             if route != None:
-                print("RouteAnnounce: better route to %s" % str(route))
+                if parent._debug:
+                    print("RouteAnnounce: better route to %s" % str(route))
                 # We have a new/better route.  If not for us, announce it.
                 if self.target() == parent.address:
                     # We have a route to target.  Rebroadcast any pending packets.
@@ -439,7 +450,10 @@ class DataPacket(Packet):
             self.payload(payload)
 
     def __str__(self):
-        return "Data: [%s] '%s'" % (super().__str__(), self.payload().decode())
+        try:
+            return "Data: [%s] '%s'" % (super().__str__(), self.payload().decode())
+        except:
+            return "Data: [%s] '%s'" % (super().__str__(), self.payload())
 
     # Set or read the payload portion of the data
     def payload(self, value=None, start=0, end=None):
@@ -528,13 +542,13 @@ class Route():
         self._pending_routerequest = None
 
         packet = True
-        print("Release Pending for %s" % (str(self)))
+        # print("Release Pending for %s" % (str(self)))
         while packet:
             packet = self._pending_queue.get(wait=0)
             if packet:
-                print("Release sending %s" % (str(packet)))
+                # print("Release sending %s" % (str(packet)))
                 parent.send_packet(packet)
-        print("Release done")
+        # print("Release done")
 
     def is_expired(self):
         return time() >= self._lifetime
@@ -587,7 +601,8 @@ class MeshNet(RadioDriver):
         # Defines routes to nodes
         self._routes = {}
         self._packet_errors_crc = 0
-        self._packet_processed = 0
+        self._packet_received = 0
+        self._packet_transmitted = 0
         self._packet_ignored = 0
         self._packet_lock = rlock()
 
@@ -641,7 +656,7 @@ class MeshNet(RadioDriver):
 
     def announce_start(self, interval):
         print("Announce gateway every %.1f seconds" % interval)
-        self._announce_thread = thread(run=self._announce)
+        self._announce_thread = thread(run=self._announce, stack=8192)
         self._announce_thread.start(interval=interval)
 
     def _announce(self, t, interval):
@@ -676,7 +691,8 @@ class MeshNet(RadioDriver):
                 # Create new route
                 route = Route(target=target, nexthop=nexthop, sequence=sequence, metric=metric, gateway_flag=gateway_flag)
                 self._routes[target] = route
-                print("Created %s" % str(route))
+                if self._debug:
+                    print("Created %s" % str(route))
 
             # Else if we are forcing creation, or the sequence number is different or the metric is better, create a new route
             elif sequence != self._routes[target].sequence() or metric < self._routes[target].metric():
@@ -686,7 +702,8 @@ class MeshNet(RadioDriver):
                 route.metric(metric)
                 route.sequence(sequence)
                 route.update_lifetime()
-                print("Updated %s" % str(route))
+                if self._debug:
+                    print("Updated %s" % str(route))
 
             else:
                 # No route to host
@@ -772,7 +789,7 @@ class MeshNet(RadioDriver):
             nexthop = packet.nexthop()
 
             if self._debug:
-                print("onReceive: %s" % (str(packet)))
+                print("Received: %s" % (str(packet)))
 
             # In promiscuous, deliver to receiver so it can handle it (but not process it)
             if self._promiscuous:
@@ -781,7 +798,7 @@ class MeshNet(RadioDriver):
                 self.put_receive_packet(packet_copy)
 
             if nexthop == BROADCAST_ADDRESS or nexthop == self.address:
-                self._packet_processed += 1
+                self._packet_received += 1
                 # To us or broadcasted
                 packet.process(self)
 
@@ -794,16 +811,20 @@ class MeshNet(RadioDriver):
 
 
     def receive_packet(self):
+        gc.collect()
         return self._receive_queue.get()
 
     def put_receive_packet(self, packet):
         self._receive_queue.put(packet)
+        gc.collect()
 
     # Finished transmitting - see if we can transmit another
     # If we have another packet, return it to caller.
     def onTransmit(self):
         # if self._debug:
         #    print("onTransmit complete")
+
+        self._packet_transmitted += 1
 
         # Delete top packet in queue
         packet = self._transmit_queue.get(wait=0)
@@ -832,7 +853,7 @@ class MeshNet(RadioDriver):
         else:
             # Label packets as coming from us
             packet.previous(self.address)
-            print("%s: set previous to %d" % (str(packet), self.address))
+            # print("%s: set previous to %d" % (str(packet), self.address))
 
             # Label as originating here if no previous assigned source address
             if packet.source() == NULL_ADDRESS:
@@ -854,7 +875,8 @@ class MeshNet(RadioDriver):
                         # Save packet in route for later delivery
                         route.put_pending_packet(packet)
 
-                        print("Routing %s" % str(packet))
+                        if self._debug:
+                            print("Routing %s" % str(packet))
                         request = RouteRequest(target=packet.target(), previous=self.address, source=self.address, sequence=route.sequence(), metric=1, gateway_flag=self._gateway)
 
                         # This will queue repeats of this request until cancelled
@@ -890,9 +912,9 @@ class MeshNet(RadioDriver):
                     # print("Appending to queue: %s" % packet.decode())
                     self._transmit_queue.put(packet)
                     if len(self._transmit_queue) == 1:
-                        if self._debug:
-                            print("Transmitting: %s" % str(packet))
                         self.transmit_packet(packet.data())
+                        if self._debug:
+                            print("Transmitted: %s" % str(packet))
 
     # A thread to check all routes and those with resend the packets for those with retry requests
     def _retry_routerequests(self, thread, timeout):
@@ -911,7 +933,8 @@ class MeshNet(RadioDriver):
                     else:
                         packet = route.get_pending_routerequest()
                         if packet:
-                            print("Retry route request %s" % str(packet))
+                            if self._debug:
+                                print("Retry route request %s" % str(packet))
                             self.send_packet(packet)
 
     def stop(self):
